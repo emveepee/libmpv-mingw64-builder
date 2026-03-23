@@ -2,8 +2,9 @@ name: Build libmpv Linux (Debian 11)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 3 * * 0'  # Weekly Sunday 3am
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -21,39 +22,21 @@ jobs:
             git curl wget ca-certificates \
             python3 python3-pip \
             autoconf automake libtool gettext \
+            cmake \
             libass-dev libfreetype6-dev libfribidi-dev libharfbuzz-dev \
             libbluray-dev liblcms2-dev libluajit-5.1-dev \
             libfontconfig-dev libjpeg-dev zlib1g-dev libpng-dev \
             libva-dev libvdpau-dev \
             libgl1-mesa-dev
 
-      - name: Install newer autoconf (Debian 11 ships 2.69, zvbi needs 2.71+)
-        run: |
-          apt-get install -y wget
-          wget -q https://ftp.gnu.org/gnu/autoconf/autoconf-2.71.tar.gz
-          tar xzf autoconf-2.71.tar.gz
-          cd autoconf-2.71
-          ./configure --prefix=/usr/local
-          make -j$(nproc)
-          make install
-          autoconf --version | head -1
-
-
+      - name: Remove conflicting dev packages
         run: |
           apt-get remove -y libavdevice-dev libcdio-dev libcdio-paranoia-dev 2>/dev/null || true
 
       - name: Install newer meson and ninja via pip
         run: |
           pip3 install meson ninja
-          # Add pip install location to PATH
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          export PATH="$HOME/.local/bin:$PATH"
-          meson --version
-          ninja --version
-
-      - name: Install cmake
-        run: |
-          apt-get install -y cmake || pip3 install cmake
+          echo "/root/.local/bin" >> $GITHUB_PATH
 
       - name: Download build script from wiki
         run: |
@@ -61,59 +44,63 @@ jobs:
             "https://raw.githubusercontent.com/wiki/emveepee/libmpv-mingw64-builder/build-libmpv-linux.sh" \
             -o build-libmpv-linux.sh
           chmod +x build-libmpv-linux.sh
-          head -5 build-libmpv-linux.sh
 
-      - name: Cache build dependencies
-        uses: actions/cache@v4
+      - name: Cache build sources
+        uses: actions/cache@v4.2.3
         with:
           path: |
             work/src
             work/deps-zvbi
             work/deps-placebo
             work/deps-ffmpeg6
-          key: libmpv-debian11-v0.39.0-${{ hashFiles('build-libmpv-linux.sh') }}
+            work/deps-ffmpeg7
+          key: libmpv-debian11-${{ hashFiles('build-libmpv-linux.sh') }}
           restore-keys: |
-            libmpv-debian11-v0.39.0-
+            libmpv-debian11-
 
-      - name: Build libmpv v0.39.0
+      - name: Build libmpv v0.39.0 and v0.41.0
         run: |
-          export PATH="$HOME/.local/bin:$PATH"
+          export PATH="/root/.local/bin:$PATH"
           export JOBS=$(nproc)
           export INSTALL_PREFIX="$HOME/.local"
-          ./build-libmpv-linux.sh v0.39.0
+          ./build-libmpv-linux.sh v0.39.0 v0.41.0
         env:
           FFMPEG6_VERSION: "6.1.1"
+          FFMPEG7_VERSION: "7.1.1"
           ZVBI_VERSION: "0.2.44"
           LIBPLACEBO_VERSION: "7.351.0"
 
       - name: Show dependency list
+        if: always()
         run: |
-          so=$(find work/build/mpv-v0.39.0 -name "libmpv.so*" | head -1)
-          if [[ -n "$so" ]]; then
-            echo "==> libmpv.so dependencies:"
-            ldd "$so" || true
-          fi
-          echo ""
-          echo "==> avcodec dependencies:"
-          ldd work/deps-ffmpeg6/lib/libavcodec.so.* 2>/dev/null | head -30 || true
+          for tag in v0.39.0 v0.41.0; do
+            so=$(find work/build/mpv-$tag -name "libmpv.so*" 2>/dev/null | head -1)
+            if [[ -n "$so" ]]; then
+              echo "==> libmpv $tag dependencies:"
+              ldd "$so" || true
+            fi
+          done
 
-      - name: Upload SDK
-        uses: actions/upload-artifact@v4
+      - name: Upload SDK artifacts
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
         with:
-          name: libmpv-sdk-v0.39.0-debian11-x86_64
-          path: out/libmpv-sdk-v0.39.0-linux-x86_64.tar.gz
+          name: libmpv-sdk-debian11-x86_64
+          path: out/libmpv-sdk-*-linux-x86_64.tar.gz
           if-no-files-found: warn
 
-      - name: Upload Runtime
-        uses: actions/upload-artifact@v4
+      - name: Upload Runtime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
         with:
-          name: libmpv-runtime-v0.39.0-debian11-x86_64
-          path: out/libmpv-runtime-v0.39.0-linux-x86_64.tar.gz
+          name: libmpv-runtime-debian11-x86_64
+          path: out/libmpv-runtime-*-linux-x86_64.tar.gz
           if-no-files-found: warn
 
       - name: Upload SHA256s
-        uses: actions/upload-artifact@v4
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
         with:
-          name: libmpv-sha256-v0.39.0-debian11-x86_64
+          name: libmpv-sha256-debian11-x86_64
           path: out/*.sha256
           if-no-files-found: warn
