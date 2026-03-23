@@ -54,16 +54,18 @@ jobs:
             work/deps-placebo
             work/deps-ffmpeg6
             work/deps-ffmpeg7
-          key: libmpv-debian11-${{ hashFiles('build-libmpv-linux.sh') }}
+            work/deps-placebo
+          key: libmpv-debian11-all-${{ hashFiles('build-libmpv-linux.sh') }}
           restore-keys: |
+            libmpv-debian11-all-
             libmpv-debian11-
 
-      - name: Build libmpv v0.39.0 and v0.41.0
+      - name: Build libmpv v0.37.0 through v0.41.0
         run: |
           export PATH="/root/.local/bin:$PATH"
           export JOBS=$(nproc)
           export INSTALL_PREFIX="$HOME/.local"
-          ./build-libmpv-linux.sh v0.39.0 v0.41.0
+          ./build-libmpv-linux.sh v0.41.0 v0.40.0 v0.39.0 v0.38.0 v0.37.0
         env:
           FFMPEG6_VERSION: "6.1.1"
           FFMPEG7_VERSION: "7.1.1"
@@ -73,7 +75,7 @@ jobs:
       - name: Show dependency list
         if: always()
         run: |
-          for tag in v0.39.0 v0.41.0; do
+          for tag in v0.41.0 v0.40.0 v0.39.0 v0.38.0 v0.37.0; do
             so=$(find work/build/mpv-$tag -name "libmpv.so*" 2>/dev/null | head -1)
             if [[ -n "$so" ]]; then
               echo "==> libmpv $tag dependencies:"
