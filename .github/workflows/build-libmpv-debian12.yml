@@ -1,0 +1,132 @@
+name: Build libmpv Linux (Debian 12)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mpv_tags:
+        description: 'mpv tags to build (space-separated, default: v0.41.0)'
+        required: false
+        default: 'v0.41.0'
+      ffmpeg8_version:
+        description: 'FFmpeg 8.x version'
+        required: false
+        default: '8.1'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:12
+      options: --privileged
+
+    steps:
+      - name: Install base dependencies
+        run: |
+          apt-get update
+          apt-get install -y \
+            build-essential nasm yasm pkg-config \
+            git curl wget ca-certificates \
+            python3 python3-pip \
+            autoconf automake libtool gettext autopoint \
+            cmake \
+            libass-dev libfreetype6-dev libfribidi-dev libharfbuzz-dev \
+            liblcms2-dev libluajit-5.1-dev \
+            libfontconfig-dev libjpeg-dev zlib1g-dev libpng-dev \
+            libdav1d-dev \
+            libva-dev libvdpau-dev \
+            libgl1-mesa-dev libegl1-mesa-dev libgbm-dev libdrm-dev \
+            libwayland-dev wayland-protocols libxkbcommon-dev \
+            libx11-dev libxext-dev libxrandr-dev libxpresent-dev libxss-dev \
+            libpipewire-0.3-dev libpulse-dev libasound2-dev \
+            hwdata patchelf
+
+      - name: Remove conflicting dev packages
+        run: |
+          apt-get remove -y libavdevice-dev libcdio-dev libcdio-paranoia-dev 2>/dev/null || true
+
+      - name: Install newer meson and ninja via pip
+        run: |
+          pip3 install --break-system-packages meson ninja
+          echo "/root/.local/bin" >> $GITHUB_PATH
+
+      - name: Download build script from wiki
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/wiki/emveepee/libmpv-mingw64-builder/build-libmpv-linux-next.sh" \
+            -o build-libmpv-linux-next.sh
+          chmod +x build-libmpv-linux-next.sh
+
+      - name: Cache build sources
+        uses: actions/cache@v4.2.3
+        with:
+          path: |
+            work/src
+            work/deps-zvbi
+            work/deps-placebo
+            work/deps-displayinfo
+            work/deps-wayland-protocols
+            work/deps-ffmpeg8
+          key: libmpv-debian12-${{ inputs.mpv_tags }}-${{ inputs.ffmpeg8_version }}-dav1d-rpath2-${{ hashFiles('build-libmpv-linux-next.sh') }}
+          restore-keys: |
+            libmpv-debian12-${{ inputs.mpv_tags }}-${{ inputs.ffmpeg8_version }}-dav1d-rpath2-
+            libmpv-debian12-${{ inputs.mpv_tags }}-${{ inputs.ffmpeg8_version }}-dav1d-rpath2
+            libmpv-debian12-${{ inputs.mpv_tags }}-dav1d-rpath2-
+            libmpv-debian12-dav1d-rpath2-
+
+      - name: Build libmpv
+        run: |
+          export PATH="/root/.local/bin:$PATH"
+          export JOBS=$(nproc)
+          export INSTALL_PREFIX="$HOME/.local"
+          ./build-libmpv-linux-next.sh ${{ inputs.mpv_tags }}
+        env:
+          FFMPEG8_VERSION: ${{ inputs.ffmpeg8_version }}
+          ZVBI_VERSION: "0.2.44"
+          LIBPLACEBO_VERSION: "7.351.0"
+
+      - name: Verify X11 + Wayland linkage
+        if: always()
+        run: |
+          for so in $(find work/build -name "libmpv.so.*" 2>/dev/null); do
+            echo "==> $so"
+            ldd "$so" | grep -E "libX11|libwayland|libEGL|libGL\.so|libdrm|libva" || true
+            echo ""
+          done
+
+      - name: Show dependency list
+        if: always()
+        run: |
+          for tag in ${{ inputs.mpv_tags }}; do
+            so=$(find work/build/mpv-$tag -name "libmpv.so*" 2>/dev/null | head -1)
+            if [[ -n "$so" ]]; then
+              echo "==> libmpv $tag dependencies:"
+              ldd "$so" || true
+            fi
+          done
+
+      - name: Upload SDK artifacts
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: libmpv-sdk-debian12-x86_64
+          path: out/libmpv-sdk-*-linux-x86_64-debian12.tar.gz
+          if-no-files-found: warn
+
+      - name: Upload Runtime artifacts
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: libmpv-runtime-debian12-x86_64
+          path: out/libmpv-runtime-*-linux-x86_64-debian12.tar.gz
+          if-no-files-found: warn
+
+      - name: Upload SHA256s
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: libmpv-sha256-debian12-x86_64
+          path: out/*-debian12.sha256
+          if-no-files-found: warn
