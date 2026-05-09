@@ -27,7 +27,8 @@ jobs:
             libbluray-dev liblcms2-dev libluajit-5.1-dev \
             libfontconfig-dev libjpeg-dev zlib1g-dev libpng-dev \
             libva-dev libvdpau-dev \
-            libgl1-mesa-dev
+            libgl1-mesa-dev \
+            patchelf
 
       - name: Remove conflicting dev packages
         run: |
@@ -55,10 +56,12 @@ jobs:
             work/deps-ffmpeg6
             work/deps-ffmpeg7
             work/deps-placebo
-          key: libmpv-debian11-all-${{ hashFiles('build-libmpv-linux.sh') }}
+          key: libmpv-debian11-all-rpath-${{ hashFiles('build-libmpv-linux.sh') }}
           restore-keys: |
-            libmpv-debian11-all-
-            libmpv-debian11-
+            libmpv-debian11-all-rpath-
+            libmpv-debian11-all-rpath
+            libmpv-debian11-rpath-
+            libmpv-debian11-rpath
 
       - name: Build libmpv v0.37.0 through v0.41.0
         run: |
